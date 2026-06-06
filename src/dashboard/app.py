@@ -135,26 +135,26 @@ with tabs[1]:
     ws_url = api_base_url.replace("http://", "ws://").replace("https://", "wss://") + "/stream/"
     ws_url_with_auth = f"{ws_url}?token={api_key}"
     
-    # Use the existing AR HTML logic
-    ar_component_html = f"""
+    # Custom HTML/JS Component for AR Camera
+    ar_component_template = """
     <!DOCTYPE html>
     <html>
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <style>
-            body {{ margin: 0; font-family: sans-serif; background: #0e1117; color: white; overflow: hidden; }}
-            #container {{ position: relative; width: 100%; max-width: 800px; margin: auto; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 30px rgba(0,0,0,0.7); }}
-            #video {{ width: 100%; height: auto; display: block; }}
-            #overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }}
-            .controls {{ padding: 15px; text-align: center; }}
-            button {{ 
+            body { margin: 0; font-family: sans-serif; background: #0e1117; color: white; overflow: hidden; }
+            #container { position: relative; width: 100%; max-width: 800px; margin: auto; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 30px rgba(0,0,0,0.7); }
+            #video { width: 100%; height: auto; display: block; }
+            #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+            .controls { padding: 15px; text-align: center; }
+            button { 
                 background: linear-gradient(135deg, #ff4b4b, #ff7e7e); color: white; border: none; padding: 14px 30px; 
                 border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 18px;
                 transition: transform 0.2s, box-shadow 0.2s;
-            }}
-            button:active {{ transform: scale(0.95); }}
-            button:disabled {{ background: #444; cursor: not-allowed; }}
-            #status {{ font-size: 14px; color: #888; margin-top: 10px; }}
+            }
+            button:active { transform: scale(0.95); }
+            button:disabled { background: #444; cursor: not-allowed; }
+            #status { font-size: 14px; color: #888; margin-top: 10px; }
         </style>
     </head>
     <body>
@@ -176,69 +176,69 @@ with tabs[1]:
 
             let ws;
             let isProcessing = false;
-            let smoothedDetections = {{}}; 
+            let smoothedDetections = {}; 
 
-            async function startCamera() {{
-                try {{
-                    const stream = await navigator.mediaDevices.getUserMedia({{
-                        video: {{ facingMode: 'environment', width: {{ ideal: 1280 }}, height: {{ ideal: 720 }} }}
-                    }});
+            async function startCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                    });
                     video.srcObject = stream;
-                    video.onloadedmetadata = () => {{
+                    video.onloadedmetadata = () => {
                         overlay.width = video.videoWidth;
                         overlay.height = video.videoHeight;
                         startBtn.disabled = true;
                         connectWebSocket();
-                    }};
-                }} catch (err) {{
+                    };
+                } catch (err) {
                     status.innerText = "Error: " + err.message;
-                }}
-            }}
+                }
+            }
 
-            function connectWebSocket() {{
-                ws = new WebSocket("{ws_url_with_auth}");
+            function connectWebSocket() {
+                ws = new WebSocket("__WS_URL__");
                 ws.binaryType = "blob";
-                ws.onopen = () => {{ status.innerText = "Connected - Analyzing Stream"; processLoop(); renderLoop(); }};
-                ws.onmessage = (event) => {{
+                ws.onopen = () => { status.innerText = "Connected - Analyzing Stream"; processLoop(); renderLoop(); };
+                ws.onmessage = (event) => {
                     const data = JSON.parse(event.data);
                     const now = Date.now();
-                    if (data.detections) {{
-                        data.detections.forEach(d => {{
-                            if (!smoothedDetections[d.track_id]) {{
-                                smoothedDetections[d.track_id] = {{ ...d.bounding_box, plate: d.plate_number, pending: d.is_ocr_pending, lastUpdate: now, target: d.bounding_box }};
-                            }} else {{
+                    if (data.detections) {
+                        data.detections.forEach(d => {
+                            if (!smoothedDetections[d.track_id]) {
+                                smoothedDetections[d.track_id] = { ...d.bounding_box, plate: d.plate_number, pending: d.is_ocr_pending, lastUpdate: now, target: d.bounding_box };
+                            } else {
                                 smoothedDetections[d.track_id].target = d.bounding_box;
                                 smoothedDetections[d.track_id].plate = d.plate_number;
                                 smoothedDetections[d.track_id].pending = d.is_ocr_pending;
                                 smoothedDetections[d.track_id].lastUpdate = now;
-                            }}
-                        }});
-                    }}
+                            }
+                        });
+                    }
                     isProcessing = false;
-                }};
-            }}
+                };
+            }
 
-            async function processLoop() {{
-                if (ws && ws.readyState === WebSocket.OPEN && !isProcessing) {{
+            async function processLoop() {
+                if (ws && ws.readyState === WebSocket.OPEN && !isProcessing) {
                     isProcessing = true;
                     const offscreen = document.createElement('canvas');
                     offscreen.width = 640; offscreen.height = 360;
                     const oCtx = offscreen.getContext('2d');
                     oCtx.drawImage(video, 0, 0, 640, 360);
-                    offscreen.toBlob((blob) => {{ ws.send(blob); }}, 'image/jpeg', 0.5);
-                }}
+                    offscreen.toBlob((blob) => { ws.send(blob); }, 'image/jpeg', 0.5);
+                }
                 setTimeout(processLoop, 50);
-            }}
+            }
 
-            function renderLoop() {{
+            function renderLoop() {
                 const now = Date.now();
                 ctx.clearRect(0, 0, overlay.width, overlay.height);
                 const scaleX = overlay.width / 640;
                 const scaleY = overlay.height / 360;
 
-                for (const tid in smoothedDetections) {{
+                for (const tid in smoothedDetections) {
                     const d = smoothedDetections[tid];
-                    if (now - d.lastUpdate > 1000) {{ delete smoothedDetections[tid]; continue; }}
+                    if (now - d.lastUpdate > 1000) { delete smoothedDetections[tid]; continue; }
                     
                     const alpha = 0.3;
                     d.x1 = d.x1 * (1-alpha) + d.target.x1 * alpha;
@@ -253,13 +253,14 @@ with tabs[1]:
                     ctx.fillText(d.pending ? "..." : d.plate, d.x1 * scaleX, d.y1 * scaleY - 10);
                 }
                 requestAnimationFrame(renderLoop);
-            }}
+            }
 
             startBtn.onclick = startCamera;
         </script>
     </body>
     </html>
     """
+    ar_component_html = ar_component_template.replace("__WS_URL__", ws_url_with_auth)
     import streamlit.components.v1 as components
     components.html(ar_component_html, height=600)
 
