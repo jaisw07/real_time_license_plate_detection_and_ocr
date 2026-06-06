@@ -9,11 +9,13 @@ if root_dir not in sys.path:
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import time
 import logging
 from src.services.pipeline import LicensePlatePipeline
-from src.api.routers import detect, stream
+from src.services.history import HistoryManager
+from src.api.routers import detect, stream, history
 from src.api.utils.auth import get_api_key
 
 # Configure logging
@@ -27,6 +29,10 @@ async def lifespan(app: FastAPI):
     # Using the verified YOLOv11 model as YOLOv26 is still training
     model_path = r"runs\detect\runs\train\yolov11n_plate\weights\best.pt"
     app.state.pipeline = LicensePlatePipeline(model_path=model_path)
+    
+    # Initialize History Manager
+    app.state.history_manager = HistoryManager()
+    
     yield
     # Cleanup
     logger.info("Shutting down LicensePlatePipeline...")
@@ -51,6 +57,10 @@ app.add_middleware(
 # Include routers
 app.include_router(detect.router, prefix="/detect", tags=["Detection"], dependencies=[Depends(get_api_key)])
 app.include_router(stream.router, prefix="/stream", tags=["Streaming"]) # Stream handles auth internally due to WebSockets
+app.include_router(history.router, prefix="/history", tags=["History"])
+
+# Mount static files for history images
+app.mount("/history/images", StaticFiles(directory="data/history/images"), name="history_images")
 
 @app.get("/health")
 async def health_check():

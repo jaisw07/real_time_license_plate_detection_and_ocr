@@ -7,6 +7,7 @@ import json
 import zipfile
 import io
 import httpx
+import asyncio
 from typing import List
 from src.models.schemas import PipelineResponse, BatchURLRequest, DetectionResult, BoundingBox, ConfidenceScores
 
@@ -16,7 +17,7 @@ async def process_image_bytes(pipeline, image_bytes: bytes):
     nparr = np.frombuffer(image_bytes, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if image is None:
-        return None, None
+        return None, None, None, None
     
     start_time = time.time()
     detections = pipeline.process_image(image)
@@ -24,17 +25,27 @@ async def process_image_bytes(pipeline, image_bytes: bytes):
     
     h, w = image.shape[:2]
     
-    return detections, (end_time - start_time) * 1000, {"width": w, "height": h}
+    return image, detections, (end_time - start_time) * 1000, {"width": w, "height": h}
 
 @router.post("/", response_model=PipelineResponse)
 async def detect_single(request: Request, file: UploadFile = File(...)):
     pipeline = request.app.state.pipeline
+    history_manager = request.app.state.history_manager
     image_bytes = await file.read()
     
-    detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
+    frame, detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
     
     if detections is None:
         raise HTTPException(status_code=400, detail="Invalid image file")
+    
+    # Save detections to history in background
+    for det in detections:
+        asyncio.create_task(history_manager.add_entry(
+            frame=frame,
+            plate_number=det["plate_number"],
+            confidence=det["confidence"],
+            bounding_box=det["bounding_box"]
+        ))
         
     return PipelineResponse(
         success=True,
@@ -46,11 +57,12 @@ async def detect_single(request: Request, file: UploadFile = File(...)):
 @router.post("/batch/files", response_model=List[PipelineResponse])
 async def detect_batch_files(request: Request, files: List[UploadFile] = File(...)):
     pipeline = request.app.state.pipeline
+    history_manager = request.app.state.history_manager
     results = []
     
     for file in files:
         image_bytes = await file.read()
-        detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
+        frame, detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
         
         if detections is not None:
             results.append(PipelineResponse(
@@ -59,6 +71,14 @@ async def detect_batch_files(request: Request, files: List[UploadFile] = File(..
                 detections=detections,
                 frame_info=frame_info
             ))
+            # Save to history
+            for det in detections:
+                asyncio.create_task(history_manager.add_entry(
+                    frame=frame,
+                    plate_number=det["plate_number"],
+                    confidence=det["confidence"],
+                    bounding_box=det["bounding_box"]
+                ))
         else:
             results.append(PipelineResponse(
                 success=False,
@@ -71,6 +91,7 @@ async def detect_batch_files(request: Request, files: List[UploadFile] = File(..
 @router.post("/batch/zip")
 async def detect_batch_zip(request: Request, file: UploadFile = File(...)):
     pipeline = request.app.state.pipeline
+    history_manager = request.app.state.history_manager
     
     if not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip files are supported")
@@ -83,8 +104,17 @@ async def detect_batch_zip(request: Request, file: UploadFile = File(...)):
                 if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                     with z.open(filename) as f:
                         image_bytes = f.read()
-                        detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
+                        frame, detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
                         
+                        if detections is not None:
+                            for det in detections:
+                                asyncio.create_task(history_manager.add_entry(
+                                    frame=frame,
+                                    plate_number=det["plate_number"],
+                                    confidence=det["confidence"],
+                                    bounding_box=det["bounding_box"]
+                                ))
+
                         result = {
                             "filename": filename,
                             "success": detections is not None,
@@ -99,6 +129,7 @@ async def detect_batch_zip(request: Request, file: UploadFile = File(...)):
 @router.post("/batch/urls", response_model=List[PipelineResponse])
 async def detect_batch_urls(request: Request, payload: BatchURLRequest):
     pipeline = request.app.state.pipeline
+    history_manager = request.app.state.history_manager
     results = []
     
     async with httpx.AsyncClient() as client:
@@ -107,7 +138,7 @@ async def detect_batch_urls(request: Request, payload: BatchURLRequest):
                 response = await client.get(url, timeout=10.0)
                 if response.status_code == 200:
                     image_bytes = response.content
-                    detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
+                    frame, detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
                     
                     if detections is not None:
                         results.append(PipelineResponse(
@@ -116,6 +147,13 @@ async def detect_batch_urls(request: Request, payload: BatchURLRequest):
                             detections=detections,
                             frame_info=frame_info
                         ))
+                        for det in detections:
+                            asyncio.create_task(history_manager.add_entry(
+                                frame=frame,
+                                plate_number=det["plate_number"],
+                                confidence=det["confidence"],
+                                bounding_box=det["bounding_box"]
+                            ))
                         continue
             except Exception as e:
                 pass

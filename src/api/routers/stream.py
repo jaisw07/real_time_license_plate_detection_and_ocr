@@ -28,6 +28,7 @@ async def websocket_stream(
 
     await websocket.accept()
     pipeline = websocket.app.state.pipeline
+    history_manager = websocket.app.state.history_manager
     
     # Per-connection YOLO instance for isolated tracking
     model_path = pipeline.model_path
@@ -35,9 +36,10 @@ async def websocket_stream(
     
     # Per-connection cache for OCR results
     ocr_cache = {} # track_id -> {"plate_number": str, "raw_ocr": str, "ocr_conf": float, "is_processing": bool}
+    history_recorded = set() # track_ids already saved to history in this session
     ocr_semaphore = asyncio.Semaphore(2)
 
-    async def run_async_ocr(track_id, frame, box):
+    async def run_async_ocr(track_id, frame, box, det_conf):
         async with ocr_semaphore:
             try:
                 loop = asyncio.get_event_loop()
@@ -50,6 +52,20 @@ async def websocket_stream(
                     "ocr_conf": conf,
                     "is_processing": False
                 }
+                
+                # Save to global history if not already recorded for this track_id
+                if track_id not in history_recorded and cleaned != "Unknown":
+                    history_recorded.add(track_id)
+                    await history_manager.add_entry(
+                        frame=frame,
+                        plate_number=cleaned,
+                        confidence={"detection": det_conf, "ocr": conf},
+                        bounding_box={
+                            "x1": float(box[0]), "y1": float(box[1]), 
+                            "x2": float(box[2]), "y2": float(box[3])
+                        },
+                        track_id=track_id
+                    )
             except Exception as e:
                 logger.error(f"Async OCR error for track {track_id}: {e}")
                 if track_id in ocr_cache:
@@ -88,7 +104,7 @@ async def websocket_stream(
                     ocr_result = ocr_cache[track_id]
                 else:
                     ocr_cache[track_id] = {"plate_number": "Processing...", "raw_ocr": "", "ocr_conf": 0.0, "is_processing": True}
-                    asyncio.create_task(run_async_ocr(track_id, frame.copy(), det["box"]))
+                    asyncio.create_task(run_async_ocr(track_id, frame.copy(), det["box"], det["confidence"]))
                     ocr_result = ocr_cache[track_id]
                 
                 final_detections.append({
@@ -118,5 +134,6 @@ async def websocket_stream(
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
     finally:
-        del session_model
+        if 'session_model' in locals():
+            del session_model
         logger.info("Cleaned up session model")
