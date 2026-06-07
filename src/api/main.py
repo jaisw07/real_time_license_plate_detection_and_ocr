@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Initialize pipeline
     logger.info("Initializing LicensePlatePipeline...")
-    # Using the verified YOLOv11 model as YOLOv26 is still training
-    model_path = r"runs\detect\runs\train\yolov11n_plate\weights\best.pt"
+    # Swapped to YOLOv26 for NMS-Free inference and better efficiency
+    model_path = r"runs\detect\runs\train\yolov26n_plate\weights\best.pt"
     app.state.pipeline = LicensePlatePipeline(model_path=model_path)
     yield
     # Cleanup
