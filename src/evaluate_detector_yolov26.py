@@ -6,7 +6,7 @@ def main():
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(root_dir)
 
-    train_dir = 'runs/train/yolov26n_plate'
+    train_dir = 'runs/detect/runs/train/yolov26n_plate'
     model_path = os.path.join(train_dir, 'weights', 'best.pt')
     
     if not os.path.exists(model_path):
@@ -16,7 +16,7 @@ def main():
     # 1. Evaluate on test split
     print("--- Evaluating on Test Set ---")
     model = YOLO(model_path)
-    metrics = model.val(data='dataset_yolo26/data.yaml', split='test')
+    metrics = model.val(data='dataset_yolo26/data.yaml', split='test', plots=True, save=True)
     
     print("\n--- Test Metrics ---")
     print(f"mAP@50-95: {metrics.box.map:.4f}")
@@ -44,8 +44,7 @@ def main():
             print("OK: Val loss stable. No severe overfitting.")
 
     print("\n--- Visual Curves ---")
-    print(f"Training curves saved at: {os.path.join(train_dir, 'results.png')}")
-    print(f"Confusion matrix saved at: {os.path.join(train_dir, 'confusion_matrix.png')}")
+    print(f"Validation curves and confusion matrix saved at: {metrics.save_dir}")
 
 if __name__ == '__main__':
     main()
