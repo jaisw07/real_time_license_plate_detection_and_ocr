@@ -10,7 +10,20 @@ import json
 
 st.set_page_config(page_title="License Plate Detection & OCR", layout="wide")
 
-st.title("🚗 Real-Time License Plate Detection & OCR")
+# Header with Title and API Docs Link
+col1, col2 = st.columns([4, 1])
+with col1:
+    st.title("Real-Time License Plate Detection & OCR")
+with col2:
+    st.markdown(
+        """
+        <div style="display: flex; justify-content: flex-end; align-items: center; height: 100%; padding-top: 25px;">
+            <a href="https://api.shreyjaiswal.dpdns.org/docs" target="_blank" style="text-decoration: none; font-size: 16px; font-weight: bold; color: #ff4b4b; background-color: #2b2b2b; padding: 8px 16px; border-radius: 6px; border: 1px solid #444;">API Docs ↗</a>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+
 st.markdown("---")
 
 # Load Configuration from Secrets or Environment
@@ -20,11 +33,6 @@ DEFAULT_KEY = "your_placeholder_secret_key_here"
 
 api_base_url = st.secrets.get("BACKEND_URL", os.getenv("BACKEND_URL", DEFAULT_API_URL))
 api_key = st.secrets.get("API_KEY", os.getenv("API_KEY", DEFAULT_KEY))
-
-# Sidebar for manual override (useful for local testing)
-st.sidebar.title("Settings")
-api_base_url = st.sidebar.text_input("API Base URL", value=api_base_url)
-confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.25)
 
 # Standard Headers for API Requests
 headers = {"X-API-Key": api_key}
