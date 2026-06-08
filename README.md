@@ -1,4 +1,4 @@
-# 🚗 Real-Time License Plate Detection & OCR
+# Real-Time License Plate Detection & OCR
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136.3-009688.svg)](https://fastapi.tiangolo.com/)
