@@ -17,6 +17,7 @@ class DetectionResult(BaseModel):
     confidence: ConfidenceScores
     bounding_box: BoundingBox
     track_id: Optional[int] = None
+    plate_colour: Optional[str] = None
 
 class FrameInfo(BaseModel):
     width: int
@@ -30,3 +31,13 @@ class PipelineResponse(BaseModel):
 
 class BatchURLRequest(BaseModel):
     urls: List[str]
+
+class SingleBase64Request(BaseModel):
+    image: str
+
+class BatchBase64Request(BaseModel):
+    images: List[str]
+
+class ZipBase64Request(BaseModel):
+    zip: str
+

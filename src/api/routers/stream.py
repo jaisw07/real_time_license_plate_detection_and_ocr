@@ -41,13 +41,14 @@ async def websocket_stream(
         async with ocr_semaphore:
             try:
                 loop = asyncio.get_event_loop()
-                cleaned, raw, conf = await loop.run_in_executor(
+                cleaned, raw, conf, color = await loop.run_in_executor(
                     None, pipeline.run_ocr_on_crop, frame, box
                 )
                 ocr_cache[track_id] = {
                     "plate_number": cleaned,
                     "raw_ocr": raw,
                     "ocr_conf": conf,
+                    "plate_colour": color,
                     "is_processing": False
                 }
             except Exception as e:
@@ -87,7 +88,13 @@ async def websocket_stream(
                 if track_id in ocr_cache:
                     ocr_result = ocr_cache[track_id]
                 else:
-                    ocr_cache[track_id] = {"plate_number": "Processing...", "raw_ocr": "", "ocr_conf": 0.0, "is_processing": True}
+                    ocr_cache[track_id] = {
+                        "plate_number": "Processing...", 
+                        "raw_ocr": "", 
+                        "ocr_conf": 0.0, 
+                        "plate_colour": "Unknown",
+                        "is_processing": True
+                    }
                     asyncio.create_task(run_async_ocr(track_id, frame.copy(), det["box"]))
                     ocr_result = ocr_cache[track_id]
                 
@@ -100,6 +107,7 @@ async def websocket_stream(
                     },
                     "bounding_box": det["bounding_box"],
                     "track_id": track_id,
+                    "plate_colour": ocr_result.get("plate_colour", "Unknown"),
                     "is_ocr_pending": ocr_result.get("is_processing", False)
                 })
             

@@ -5,6 +5,7 @@ from ultralytics import YOLO
 from src.services.ocr import PlateOCR
 from src.services.preprocessor import crop_with_padding, preprocess_for_ocr
 from src.utils.postprocess import clean_ocr_text
+from src.utils.color_extractor import extract_plate_color
 import logging
 
 logger = logging.getLogger(__name__)
@@ -49,10 +50,18 @@ class LicensePlatePipeline:
             # 3. Recognize
             raw_text, ocr_conf = self.ocr_service.recognize(preprocessed_crop)
             
-            # 4. Post-process
+            # 4. Color Extraction
+            x1, y1, x2, y2 = map(int, box)
+            h_img, w_img = image.shape[:2]
+            x1_c, y1_c = max(0, x1), max(0, y1)
+            x2_c, y2_c = min(w_img, x2), min(h_img, y2)
+            color_crop = image[y1_c:y2_c, x1_c:x2_c]
+            plate_colour = extract_plate_color(color_crop)
+            
+            # 5. Post-process
             cleaned_text = clean_ocr_text(raw_text)
             
-            x1, y1, x2, y2 = map(float, box)
+            x1_f, y1_f, x2_f, y2_f = map(float, box)
             
             detections.append({
                 "plate_number": cleaned_text,
@@ -62,8 +71,9 @@ class LicensePlatePipeline:
                     "ocr": float(ocr_conf)
                 },
                 "bounding_box": {
-                    "x1": x1, "y1": y1, "x2": x2, "y2": y2
-                }
+                    "x1": x1_f, "y1": y1_f, "x2": x2_f, "y2": y2_f
+                },
+                "plate_colour": plate_colour
             })
             
         return detections
@@ -104,8 +114,15 @@ class LicensePlatePipeline:
         """
         Helper for partial pipeline runs (e.g. OCR-only after tracking cache miss).
         """
+        x1, y1, x2, y2 = map(int, box)
+        h_img, w_img = image.shape[:2]
+        x1_c, y1_c = max(0, x1), max(0, y1)
+        x2_c, y2_c = min(w_img, x2), min(h_img, y2)
+        color_crop = image[y1_c:y2_c, x1_c:x2_c]
+        plate_colour = extract_plate_color(color_crop)
+
         crop = crop_with_padding(image, box, padding_percent=0.15)
         preprocessed_crop = preprocess_for_ocr(crop)
         raw_text, ocr_conf = self.ocr_service.recognize(preprocessed_crop)
         cleaned_text = clean_ocr_text(raw_text)
-        return cleaned_text, raw_text, float(ocr_conf)
+        return cleaned_text, raw_text, float(ocr_conf), plate_colour

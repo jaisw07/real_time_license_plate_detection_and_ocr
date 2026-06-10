@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 import cv2
 import numpy as np
@@ -7,10 +7,28 @@ import json
 import zipfile
 import io
 import httpx
+import base64
 from typing import List
-from src.models.schemas import PipelineResponse, BatchURLRequest, DetectionResult, BoundingBox, ConfidenceScores
+from src.models.schemas import (
+    PipelineResponse, 
+    BatchURLRequest, 
+    DetectionResult, 
+    BoundingBox, 
+    ConfidenceScores,
+    SingleBase64Request,
+    BatchBase64Request,
+    ZipBase64Request
+)
 
 router = APIRouter()
+
+def decode_b64_image(b64_str: str) -> bytes:
+    try:
+        if "," in b64_str:
+            b64_str = b64_str.split(",")[1]
+        return base64.b64decode(b64_str)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 encoding: {e}")
 
 async def process_image_bytes(pipeline, image_bytes: bytes):
     nparr = np.frombuffer(image_bytes, np.uint8)
@@ -27,9 +45,9 @@ async def process_image_bytes(pipeline, image_bytes: bytes):
     return detections, (end_time - start_time) * 1000, {"width": w, "height": h}
 
 @router.post("/", response_model=PipelineResponse)
-async def detect_single(request: Request, file: UploadFile = File(...)):
+async def detect_single(request: Request, payload: SingleBase64Request):
     pipeline = request.app.state.pipeline
-    image_bytes = await file.read()
+    image_bytes = decode_b64_image(payload.image)
     
     detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
     
@@ -44,22 +62,29 @@ async def detect_single(request: Request, file: UploadFile = File(...)):
     )
 
 @router.post("/batch/files", response_model=List[PipelineResponse])
-async def detect_batch_files(request: Request, files: List[UploadFile] = File(...)):
+async def detect_batch_files(request: Request, payload: BatchBase64Request):
     pipeline = request.app.state.pipeline
     results = []
     
-    for file in files:
-        image_bytes = await file.read()
-        detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
-        
-        if detections is not None:
-            results.append(PipelineResponse(
-                success=True,
-                processing_time_ms=proc_time,
-                detections=detections,
-                frame_info=frame_info
-            ))
-        else:
+    for b64_image in payload.images:
+        try:
+            image_bytes = decode_b64_image(b64_image)
+            detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
+            
+            if detections is not None:
+                results.append(PipelineResponse(
+                    success=True,
+                    processing_time_ms=proc_time,
+                    detections=detections,
+                    frame_info=frame_info
+                ))
+            else:
+                results.append(PipelineResponse(
+                    success=False,
+                    processing_time_ms=0,
+                    detections=[]
+                ))
+        except Exception:
             results.append(PipelineResponse(
                 success=False,
                 processing_time_ms=0,
@@ -69,30 +94,29 @@ async def detect_batch_files(request: Request, files: List[UploadFile] = File(..
     return results
 
 @router.post("/batch/zip")
-async def detect_batch_zip(request: Request, file: UploadFile = File(...)):
+async def detect_batch_zip(request: Request, payload: ZipBase64Request):
     pipeline = request.app.state.pipeline
-    
-    if not file.filename.endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Only .zip files are supported")
-        
-    zip_bytes = await file.read()
+    zip_bytes = decode_b64_image(payload.zip)
     
     async def generate_results():
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
-            for filename in z.namelist():
-                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    with z.open(filename) as f:
-                        image_bytes = f.read()
-                        detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
-                        
-                        result = {
-                            "filename": filename,
-                            "success": detections is not None,
-                            "processing_time_ms": proc_time,
-                            "detections": detections,
-                            "frame_info": frame_info
-                        }
-                        yield json.dumps(result) + "\n"
+        try:
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+                for filename in z.namelist():
+                    if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        with z.open(filename) as f:
+                            image_bytes = f.read()
+                            detections, proc_time, frame_info = await process_image_bytes(pipeline, image_bytes)
+                            
+                            result = {
+                                "filename": filename,
+                                "success": detections is not None,
+                                "processing_time_ms": proc_time,
+                                "detections": detections,
+                                "frame_info": frame_info
+                            }
+                            yield json.dumps(result) + "\n"
+        except Exception as e:
+            yield json.dumps({"success": False, "error": str(e)}) + "\n"
 
     return StreamingResponse(generate_results(), media_type="application/x-ndjson")
 

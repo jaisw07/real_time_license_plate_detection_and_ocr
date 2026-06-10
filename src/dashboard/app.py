@@ -7,6 +7,7 @@ import io
 import os
 import pandas as pd
 import json
+import base64
 
 st.set_page_config(page_title="License Plate Detection & OCR", layout="wide")
 
@@ -41,8 +42,9 @@ tabs = st.tabs(["🖼️ Image Processing", "📦 Batch Processing (ZIP)", "🎥
 
 def process_single_image(image_bytes, image_name="image.jpg"):
     try:
-        files = {"file": (image_name, image_bytes, "image/jpeg")}
-        response = requests.post(f"{api_base_url}/detect/", files=files, headers=headers)
+        b64_str = base64.b64encode(image_bytes).decode("utf-8")
+        payload = {"image": b64_str}
+        response = requests.post(f"{api_base_url}/detect/", json=payload, headers=headers)
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 403:
@@ -115,9 +117,10 @@ with tabs[0]:
                         box = det["bounding_box"]
                         plate = det["plate_number"]
                         conf = det["confidence"]["detection"]
+                        color = det.get("plate_colour", "Unknown")
                         
                         cv2.rectangle(img_np, (int(box["x1"]), int(box["y1"])), (int(box["x2"]), int(box["y2"])), (0, 255, 0), 2)
-                        cv2.putText(img_np, f"{plate} ({conf:.2f})", (int(box["x1"]), int(box["y1"]) - 10), 
+                        cv2.putText(img_np, f"{plate} ({color}) ({conf:.2f})", (int(box["x1"]), int(box["y1"]) - 10), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
                     st.image(img_np, use_container_width=True)
                 else:
@@ -129,6 +132,7 @@ with tabs[0]:
                     df = pd.DataFrame([
                         {
                             "Plate": d["plate_number"],
+                            "Colour": d.get("plate_colour", "Unknown"),
                             "Conf (Det)": f"{d['confidence']['detection']:.2f}",
                             "Conf (OCR)": f"{d['confidence']['ocr']:.2f}"
                         } for d in detections
@@ -147,9 +151,10 @@ with tabs[1]:
         if st.button("Start Batch Processing"):
             with st.spinner("Processing ZIP archive..."):
                 try:
-                    files = {"file": ("batch.zip", zip_file.getvalue(), "application/zip")}
+                    zip_b64 = base64.b64encode(zip_file.getvalue()).decode("utf-8")
+                    payload = {"zip": zip_b64}
                     # Note: /detect/batch/zip returns a streaming response (NDJSON)
-                    response = requests.post(f"{api_base_url}/detect/batch/zip", files=files, stream=True)
+                    response = requests.post(f"{api_base_url}/detect/batch/zip", json=payload, headers=headers, stream=True)
                     
                     if response.status_code == 200:
                         all_results = []
@@ -170,8 +175,8 @@ with tabs[1]:
                         for res in all_results:
                             filename = res.get("filename")
                             detections = res.get("detections", [])
-                            plates = ", ".join([d["plate_number"] for d in detections]) if detections else "None"
-                            summary_data.append({"File": filename, "Detected Plates": plates})
+                            plates_info = ", ".join([f"{d['plate_number']} ({d.get('plate_colour', 'Unknown')})" for d in detections]) if detections else "None"
+                            summary_data.append({"File": filename, "Detected Plates": plates_info})
                         
                         st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
                         
@@ -293,12 +298,13 @@ with tabs[2]:
                                 smoothedDetections[d.track_id] = {{ 
                                     ...d.bounding_box, 
                                     plate: d.plate_number, 
+                                    color: d.plate_colour,
                                     pending: d.is_ocr_pending,
                                     lastUpdate: now,
-                                    target: {{ ...d.bounding_box, plate: d.plate_number, pending: d.is_ocr_pending }}
+                                    target: {{ ...d.bounding_box, plate: d.plate_number, color: d.plate_colour, pending: d.is_ocr_pending }}
                                 }};
                             }} else {{
-                                smoothedDetections[d.track_id].target = {{ ...d.bounding_box, plate: d.plate_number, pending: d.is_ocr_pending }};
+                                smoothedDetections[d.track_id].target = {{ ...d.bounding_box, plate: d.plate_number, color: d.plate_colour, pending: d.is_ocr_pending }};
                                 smoothedDetections[d.track_id].lastUpdate = now;
                             }}
                         }});
@@ -372,6 +378,7 @@ with tabs[2]:
                     d.x2 = d.x2 * (1 - alpha) + d.target.x2 * alpha;
                     d.y2 = d.y2 * (1 - alpha) + d.target.y2 * alpha;
                     d.plate = d.target.plate;
+                    d.color = d.target.color;
                     d.pending = d.target.pending;
 
                     if (now - d.lastUpdate > 1000) {{
@@ -386,7 +393,7 @@ with tabs[2]:
                     ctx.stroke();
 
                     ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-                    const label = d.pending ? "OCR Processing..." : d.plate;
+                    const label = d.pending ? "OCR Processing..." : `${d.plate} (${d.color})`;
                     const labelWidth = ctx.measureText(label).width + 20;
                     ctx.fillRect(d.x1 * scale, d.y1 * scale - 35, labelWidth, 30);
 
