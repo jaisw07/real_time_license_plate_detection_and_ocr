@@ -30,10 +30,10 @@ def extract_plate_color(crop: np.ndarray) -> str:
     white_mask = not_black & (s < 45)
     colored = not_black & (s >= 45)
     
-    red_mask = colored & ((h < 15) | (h >= 140))
-    yellow_mask = colored & (h >= 15) & (h < 38)
-    green_mask = colored & (h >= 38) & (h < 90)
-    blue_mask = colored & (h >= 90) & (h < 140)
+    red_mask = colored & ((h < 10) | (h >= 155))
+    yellow_mask = colored & (h >= 10) & (h < 34)
+    green_mask = colored & (h >= 34) & (h < 90)
+    blue_mask = colored & (h >= 90) & (h < 155)
     
     counts = {
         "Black": np.sum(black_mask),
