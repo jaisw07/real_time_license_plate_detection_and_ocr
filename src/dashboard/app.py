@@ -393,7 +393,7 @@ with tabs[2]:
                     ctx.stroke();
 
                     ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-                    const label = d.pending ? "OCR Processing..." : `${d.plate} (${d.color})`;
+                    const label = d.pending ? "OCR Processing..." : `${{d.plate}} (${{d.color}})`;
                     const labelWidth = ctx.measureText(label).width + 20;
                     ctx.fillRect(d.x1 * scale, d.y1 * scale - 35, labelWidth, 30);
 
