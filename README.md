@@ -12,10 +12,11 @@ This is a high-performance, real-time license plate detection and OCR system. It
 ## 🌟 Key Features
 
 *   **⚡ Real-Time Tracking:** Integration of **YOLOv26n** and **ByteTrack** for stable, multi-object tracking.
+*   **🎨 Plate Colour Extraction:** Extracts the dominant plate background color using a complete HSV space partition on a center-inset crop (middle 70% height, 80% width) and maps it to **Red, White, Blue, Green, Yellow, or Black**.
 *   **🔍 High-Accuracy OCR:** Powered by **RapidOCR (ONNX)** with custom preprocessing (CLAHE, Grayscale) and padding optimization.
 *   **🎥 Live AR Dashboard:** A custom HTML5/Canvas component for Streamlit that enables direct browser camera access with client-side EMA smoothing.
 *   **🛡️ Secure Hybrid Flow:** Local FastAPI backend exposed via **Cloudflare Tunnels** with `X-API-Key` authentication.
-*   **📦 Versatile Processing:** Supports single image uploads, batch URL processing, and NDJSON-streamed ZIP archive processing.
+*   **📦 Base64 JSON API Flow:** Optimized HTTP endpoints accepting base64-encoded JSON requests instead of slow multi-part form uploads. Supports single images, batch image lists, URL lists, and streamed ZIP archives.
 
 ---
 
@@ -25,6 +26,7 @@ This is a high-performance, real-time license plate detection and OCR system. It
 | :--- | :--- |
 | **Object Detection** | YOLOv26n (NMS-Free Architecture) |
 | **Object Tracking** | ByteTrack |
+| **Colour Extraction**| HSV Partition Classifier (Red, White, Blue, Green, Yellow, Black) |
 | **OCR Engine** | RapidOCR (ONNX Runtime) |
 | **Backend API** | FastAPI (Async/Lifespan Management) |
 | **Frontend** | Streamlit + Custom HTML/JS Canvas AR |
@@ -44,10 +46,10 @@ license-plate-ocr/
 │   ├── dashboard/          # Streamlit Frontend Dashboard
 │   ├── models/             # Pydantic Schemas & Models
 │   ├── services/           # Pipeline, OCR, and Preprocessing Logic
-│   └── utils/              # Post-processing & Auth Utilities
+│   └── utils/              # Post-processing, Color Extraction, and Auth Utilities
 ├── context/                # Documentation & Context Files
 ├── .env.example            # Template for environment variables
-├── environment.yml         # Conda environment definition
+├── environment.backend.yml # Conda environment definition
 ├── requirements.txt        # Pip requirements (frozen list)
 └── config.yml              # Cloudflare Tunnel configuration
 ```
@@ -67,8 +69,8 @@ Clone the repository and set up the environment:
 
 ```bash
 # Create and activate conda environment
-conda env create -f environment.yml
-conda activate license-plate-ocr
+conda env create -f environment.backend.yml
+conda activate ttl
 
 # Alternatively, using pip
 pip install -r requirements.txt
@@ -91,7 +93,7 @@ python -m src.api.main
 **Step B: Start the Cloudflare Tunnel**
 ```bash
 # Using the pre-configured config.yml
-.\cloudflared.exe tunnel run backend
+.\cloudflared.exe tunnel run ttl-backend
 ```
 
 **Step C: Access the Dashboard**
@@ -105,7 +107,9 @@ streamlit run src/dashboard/app.py
 ## 📊 Performance & Metrics
 
 *   **Detector (YOLOv11n Baseline):** mAP@50 = 0.9890, mAP@50-95 = 0.7158.
+*   **Detector (YOLOv26n):** Equivalent accuracy with 17% reduction in GFLOPs and NMS-Free architecture for stable latency.
 *   **OCR:** RapidOCR optimized with 15% padding and contextual correction for common character confusion (O/0, I/1, etc.).
+*   **Plate Colour:** Extracted using HSV space pixel voting on a center inset crop (to filter out vehicle paint/borders).
 *   **Latency:** Frames resized to **640px** browser-side to ensure stable ~15+ FPS over tunnels.
 
 ---
@@ -113,6 +117,10 @@ streamlit run src/dashboard/app.py
 ## 📝 Usage Guidelines
 
 *   **API Docs:** Once the backend is running, visit `http://localhost:8000/docs` for interactive API documentation.
+*   **Base64 HTTP APIs:** 
+    *   `POST /detect/` accepts `{"image": "<base64_string>"}`
+    *   `POST /detect/batch/files` accepts `{"images": ["<base64_string_1>", ...]}`
+    *   `POST /detect/batch/zip` accepts `{"zip": "<base64_zip_string>"}`
 *   **Live AR:** Prioritizes the environment (back) camera on mobile devices.
 *   **Batch ZIP:** Returns a streaming NDJSON response for real-time progress updates on large datasets.
 
