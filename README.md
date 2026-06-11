@@ -16,7 +16,7 @@ This is a high-performance, real-time license plate detection and OCR system. It
 *   **🔍 High-Accuracy OCR:** Powered by **RapidOCR (ONNX)** with custom preprocessing (CLAHE, Grayscale) and padding optimization.
 *   **🎥 Live AR Dashboard:** A custom HTML5/Canvas component for Streamlit that enables direct browser camera access with client-side EMA smoothing.
 *   **🛡️ Secure Hybrid Flow:** Local FastAPI backend exposed via **Cloudflare Tunnels** with `X-API-Key` authentication.
-*   **📦 Base64 JSON API Flow:** Optimized HTTP endpoints accepting base64-encoded JSON requests instead of slow multi-part form uploads. Supports single images, batch image lists, URL lists, and streamed ZIP archives.
+*   **📦 Base64 JSON API Flow:** Optimized HTTP endpoints accepting base64-encoded JSON requests. Includes a dedicated Dashboard tab for direct Base64 testing. Supports single images, batch lists, URLs, and ZIP archives.
 
 ---
 
@@ -108,7 +108,7 @@ streamlit run src/dashboard/app.py
 
 *   **Detector (YOLOv11n Baseline):** mAP@50 = 0.9890, mAP@50-95 = 0.7158.
 *   **Detector (YOLOv26n):** Equivalent accuracy with 17% reduction in GFLOPs and NMS-Free architecture for stable latency.
-*   **OCR:** RapidOCR optimized with 15% padding and contextual correction for common character confusion (O/0, I/1, etc.).
+*   **OCR:** RapidOCR optimized with 15% padding, contextual correction, regex validation (Indian formats), and IoU-based fragment deduplication/merging.
 *   **Plate Colour:** Extracted using HSV space pixel voting on a center inset crop (to filter out vehicle paint/borders).
 *   **Latency:** Frames resized to **640px** browser-side to ensure stable ~15+ FPS over tunnels.
 

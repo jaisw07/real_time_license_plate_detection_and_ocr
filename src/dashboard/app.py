@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import json
 import base64
+import re
 
 st.set_page_config(page_title="License Plate Detection & OCR", layout="wide")
 
@@ -38,7 +39,7 @@ api_key = st.secrets.get("API_KEY", os.getenv("API_KEY", DEFAULT_KEY))
 # Standard Headers for API Requests
 headers = {"X-API-Key": api_key}
 
-tabs = st.tabs(["🖼️ Image Processing", "📦 Batch Processing (ZIP)", "🎥 Live Camera"])
+tabs = st.tabs(["🖼️ Image Processing", "🔤 Base64 Input", "📦 Batch Processing (ZIP)", "🎥 Live Camera"])
 
 def process_single_image(image_bytes, image_name="image.jpg"):
     try:
@@ -142,6 +143,96 @@ with tabs[0]:
                     st.warning("No license plates detected.")
 
 with tabs[1]:
+    st.header("Base64 Input Processing")
+    st.markdown("Paste one or more base64 encoded images (one per line).")
+    
+    b64_text = st.text_area("Base64 Strings", height=200, placeholder="data:image/jpeg;base64,...\\nOR\\n/9j/4AAQSkZJRgABAQAAAQABAAD...")
+    
+    if st.button("Process Base64"):
+        if b64_text.strip():
+            b64_lines = [line.strip() for line in b64_text.split('\n') if line.strip()]
+            sanitized_b64 = []
+            for line in b64_lines:
+                clean_line = re.sub(r'^data:image/[^;]+;base64,', '', line)
+                sanitized_b64.append(clean_line)
+            
+            if not sanitized_b64:
+                st.warning("No valid base64 strings found.")
+            else:
+                results_to_show = []
+                with st.spinner(f"Processing {len(sanitized_b64)} images..."):
+                    if len(sanitized_b64) == 1:
+                        try:
+                            resp = requests.post(f"{api_base_url}/detect/", json={"image": sanitized_b64[0]}, headers=headers)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                try:
+                                    img_bytes = base64.b64decode(sanitized_b64[0])
+                                    img = Image.open(io.BytesIO(img_bytes))
+                                except Exception:
+                                    img = None
+                                results_to_show.append({"name": "Base64 Image 1", "image": img, "data": data})
+                            else:
+                                st.error(f"API Error: {resp.status_code}")
+                        except Exception as e:
+                            st.error(f"Request failed: {e}")
+                    else:
+                        try:
+                            resp = requests.post(f"{api_base_url}/detect/batch/files", json={"images": sanitized_b64}, headers=headers)
+                            if resp.status_code == 200:
+                                batch_data = resp.json()
+                                for i, data in enumerate(batch_data):
+                                    try:
+                                        img_bytes = base64.b64decode(sanitized_b64[i])
+                                        img = Image.open(io.BytesIO(img_bytes))
+                                    except:
+                                        img = None
+                                    results_to_show.append({"name": f"Base64 Image {i+1}", "image": img, "data": data})
+                            else:
+                                st.error(f"API Error: {resp.status_code}")
+                        except Exception as e:
+                            st.error(f"Request failed: {e}")
+
+                for res in results_to_show:
+                    with st.expander(f"Results for {res['name']}", expanded=True):
+                        col1, col2 = st.columns([2, 1])
+                        
+                        detections = res['data'].get("detections", [])
+                        
+                        with col1:
+                            if res['image']:
+                                img_np = np.array(res['image'])
+                                if len(img_np.shape) == 3 and img_np.shape[2] == 4:
+                                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)
+                                for det in detections:
+                                    box = det["bounding_box"]
+                                    plate = det["plate_number"]
+                                    conf = det["confidence"]["detection"]
+                                    color = det.get("plate_colour", "Unknown")
+                                    
+                                    cv2.rectangle(img_np, (int(box["x1"]), int(box["y1"])), (int(box["x2"]), int(box["y2"])), (0, 255, 0), 2)
+                                    cv2.putText(img_np, f"{plate} ({color}) ({conf:.2f})", (int(box["x1"]), int(box["y1"]) - 10), 
+                                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                                st.image(img_np, use_container_width=True)
+                            else:
+                                st.info("No image preview available.")
+                        
+                        with col2:
+                            if detections:
+                                st.subheader("Detections")
+                                df = pd.DataFrame([
+                                    {
+                                        "Plate": d["plate_number"],
+                                        "Colour": d.get("plate_colour", "Unknown"),
+                                        "Conf (Det)": f"{d['confidence']['detection']:.2f}",
+                                        "Conf (OCR)": f"{d['confidence']['ocr']:.2f}"
+                                    } for d in detections
+                                ])
+                                st.dataframe(df, use_container_width=True)
+                            else:
+                                st.warning("No license plates detected.")
+
+with tabs[2]:
     st.header("Batch ZIP Processing")
     st.markdown("Upload a ZIP file containing multiple images for high-speed batch processing.")
     
@@ -185,7 +276,7 @@ with tabs[1]:
                 except Exception as e:
                     st.error(f"Batch processing failed: {e}")
 
-with tabs[2]:
+with tabs[3]:
     st.header("Live AR Camera Feed")
     st.info("The live camera feed uses WebSockets for real-time tracking and OCR.")
     
