@@ -4,7 +4,7 @@ import os
 from ultralytics import YOLO
 from src.services.ocr import PlateOCR
 from src.services.preprocessor import crop_with_padding, preprocess_for_ocr
-from src.utils.postprocess import clean_ocr_text
+from src.utils.postprocess import clean_ocr_text, validate_plate, deduplicate_plates
 from src.utils.color_extractor import extract_plate_color
 import logging
 
@@ -76,7 +76,7 @@ class LicensePlatePipeline:
                 "plate_colour": plate_colour
             })
             
-        return detections
+        return deduplicate_plates(detections)
 
     def track_and_process(self, image: np.ndarray, model=None):
         """
@@ -125,4 +125,6 @@ class LicensePlatePipeline:
         preprocessed_crop = preprocess_for_ocr(crop)
         raw_text, ocr_conf = self.ocr_service.recognize(preprocessed_crop)
         cleaned_text = clean_ocr_text(raw_text)
+        if not validate_plate(cleaned_text):
+            cleaned_text = ""
         return cleaned_text, raw_text, float(ocr_conf), plate_colour
