@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     # Initialize pipeline
     logger.info("Initializing LicensePlatePipeline...")
     # Swapped to YOLOv26 for NMS-Free inference and better efficiency
-    model_path = r"runs\detect\runs\train\yolov26n_plate\weights\best.pt"
+    model_path = r"weights\yolov26n_plate.pt"
     app.state.pipeline = LicensePlatePipeline(model_path=model_path)
     yield
     # Cleanup

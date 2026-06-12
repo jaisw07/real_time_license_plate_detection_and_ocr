@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class LicensePlatePipeline:
-    def __init__(self, model_path: str = "yolo26n.pt", device: str = "cuda", debug: bool = True):
+    def __init__(self, model_path: str = "weights/yolov26n_plate.pt", device: str = "cuda", debug: bool = True):
         """
         Initializes the detection and OCR models.
         """

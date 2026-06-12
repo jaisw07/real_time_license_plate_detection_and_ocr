@@ -102,6 +102,10 @@ Access your dashboard via your Streamlit Community Cloud URL or run it locally:
 streamlit run src/dashboard/app.py
 ```
 
+### 5. Linux Hosted Deployment
+
+If you are migrating the project to a new Linux device (e.g., an Ubuntu server instance) and wish to host both the backend and frontend on the same machine without Cloudflare Tunnels, please see our detailed [Linux Setup Instructions](linux_setup_instructions.md).
+
 ---
 
 ## 📊 Performance & Metrics

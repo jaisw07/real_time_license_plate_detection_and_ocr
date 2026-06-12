@@ -15,7 +15,7 @@ from src.utils.postprocess import clean_ocr_text
 
 def test_pipeline(image_path: str):
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_path = os.path.join(root_dir, r"C:\Users\SHREY\Desktop\ttl\runs\detect\runs\train\yolov11n_plate\weights\best.pt")
+    model_path = os.path.join(root_dir, r"weights\yolov26n_plate.pt")
     
     if not os.path.exists(model_path):
         print(f"Error: YOLO model not found at {model_path}")
